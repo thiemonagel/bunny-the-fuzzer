@@ -249,6 +249,7 @@ static void parse_params(_u32 argc, _u8** argv) {
   
   ADD(compile_params,"-fno-strict-aliasing"); 	/* Explained earlier */
   ADD(preproc_params,"-xc");			/* Force C processing */
+  ADD(preproc_params,"-C");			/* Avoid stripping of comments */
   ADD(preproc_params,"-E");			/* Preprocess only */
   ADD(preproc_params,"<file.c>");		/* Just a placeholder for input file */
   ADD(preproc_params,"-o");			
@@ -358,6 +359,43 @@ static _u8* get_item(FILE* f) {
     obuf[olen++] = '\n';
     obuf[olen] = 0;
     return obuf;
+  }
+
+  /* skip C++-style comments */
+  if ( c=='/' ) {
+    _s32 oldc = c;
+    if ( (c=getc(f)) != EOF && c =='/' ) {
+      while ( (c=getc(f)) != EOF && c !='\n' ) ;
+      return get_item(f);
+    } else {
+      ungetc(c,f);
+      c = oldc;
+    }
+  }
+
+  /* return C-style comments as single token */
+  if ( c=='/' ) {
+    _s32 oldc = c;
+    if ( (c=getc(f)) != EOF && c =='*' ) {
+      obuf[olen++] = '/';
+      obuf[olen++] = '*';
+      while ( (c=getc(f)) != EOF ) {
+	if ( olen < MAXTOKEN -2 )
+	  obuf[olen++] = c;
+	
+	if ( oldc == '*' && c == '/' ) {
+	  obuf[olen-2] = '*';
+	  obuf[olen-1] = '/';
+	  obuf[olen]   = 0;
+	  return obuf;
+	}
+	oldc = c;
+      }
+      return 0;
+    } else {
+      ungetc(c,f);
+      c = oldc;
+    }
   }
   
   /* If found a run of [A-Za-z0-9_], consume it all. Everything else, return char-by-char. */
@@ -545,7 +583,7 @@ static void insert_hooks(void) {
       }
 
       /* And a yet another one... */
-      if (!strcmp(tok,"BunnySkip")) {
+      if (!strcmp(tok,"BunnySkip") || !strncmp(tok,"/*BunnySkip",11)) {
         if (!code_nest && !expr_nest) {
           DEBUGF("<<BunnySkip detected, bailing out>>\n");
           DYN_FREE(params);
