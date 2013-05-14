@@ -93,6 +93,14 @@ static void parse_params(_u32 argc, _u8** argv) {
     } \
   } while (0)
 
+#define ADD_mustsplit(list1,list2) do { \
+    if (list1) ADD(preproc_params,argv[pos]); \
+    if (list2) ADD(compile_params,argv[pos]); \
+    if (++pos == argc) fatal("malformed %s option",argv[pos-1]);	\
+    if (list1) ADD(preproc_params,argv[pos]);				\
+    if (list2) ADD(compile_params,argv[pos]);				\
+  } while (0)
+
   while (pos < argc) {
   
     if (*argv[pos] == '-' && argv[pos][1]) {
@@ -117,13 +125,16 @@ static void parse_params(_u32 argc, _u8** argv) {
 	case c_any  ('D'): /* -D macro=val   */
 	case c_any  ('I'): /* -I dir, -I-    */
 	case c_any  ('U'): /* -U macro       */
+	  ADD_maysplit(1,0);
+	  break;
+
 	case c_2('i','d'): /* -idirafter     */
 	case c_2('i','m'): /* -imacros       */
 	case c_2('i','n'): /* -include       */
 	case c_2('i','s'): /* -isyste,       */
 	case c_2('i','w'): /* -iwithpref...  */
 	case c_2('X','p'): /* -Xpreprocessor */
-	  ADD_maysplit(1,0);
+	  ADD_mustsplit(1,0);
   	  break;	  
 
         /* SPLITTABLE PARAMETRIC OPTIONS (FOR COMPILER/LINKER ONLY) */
@@ -133,10 +144,13 @@ static void parse_params(_u32 argc, _u8** argv) {
 	case c_any  ('L'): /* -L libpath  */
 	case c_alone('u'): /* -u symbol   */
 	case c_any  ('V'): /* -V version  */
+	  ADD_maysplit(0,1);
+  	  break;
+
 	case c_2('X','a'): /* -Xassembler */
 	case c_2('X','l'): /* -Xlinker    */
 	case c_2('-','p'): /* --param a=b */
-	  ADD_maysplit(0,1);
+	  ADD_mustsplit(0,1);
   	  break;
 
 	case c_any  ('o'): /* -o file     */
@@ -148,8 +162,10 @@ static void parse_params(_u32 argc, _u8** argv) {
         /* SPLITTABLE PARAMETRIC OPTIONS (FOR ALL STAGES) */
 
 	case c_any  ('B'): /* -B bindir */
-	case c_2('a','u'): /* -aux-info */
 	  ADD_maysplit(1,1);
+  	  break;
+	case c_2('a','u'): /* -aux-info */
+	  ADD_mustsplit(1,1);
   	  break;
 	  
         /* It's important to track -x <foo> to determine the language of input files,
@@ -191,6 +207,7 @@ static void parse_params(_u32 argc, _u8** argv) {
 #undef c_alone
 #undef c_any
 #undef ADD_maysplit
+#undef ADD_mustsplit
       
     } else {
     
