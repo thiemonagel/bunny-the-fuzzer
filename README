@@ -1,0 +1,522 @@
+================
+Bunny the Fuzzer
+================
+
+  Author    : Michal Zalewski <lcamtuf@google.com>
+  Copyright : Copyright 2007 Google Inc.
+  License   : Apache License, version 2.0
+
+----------------
+1. What is this?
+----------------
+
+  Bunny is a feedback loop, high-performance, general purpose protocol-blind 
+  fuzzer for C programs (though in principle easily portable to any other
+  imperative procedural language).
+
+  The novelty of this tool arises from its use of compiler-level integration 
+  to seamlessly inject precise and reliable instrumentation hooks into the 
+  traced program. These hooks enable the fuzzer to receive real-time feedback 
+  on changes to the function call path, call parameters, and return values in
+  response to variations in the input data.
+
+  This architecture makes it possible (and quite simple!) to significantly 
+  improve the coverage of the testing process without a noticeable performance 
+  impact usually associated with other attempts to peek into run-time internals.
+
+--------------
+2. Why bother?
+--------------
+
+  Traditional fuzzing offers a very shallow code penetration for non-trivial
+  applications and input formats. If a file of a hundred bytes or so needs to
+  have three bits flipped to a particular value to reach a vulnerable function,
+  the likelihood of this being stumbled upon by a regular fuzzer is negligible.
+
+  To work around this problem, specialized fuzzers are devised to properly 
+  handle specifics of the tested protocol, and focus on known tricky inputs.
+  Unfortunately, this approach is time-consuming, and initial assumptions made
+  by the operator may artificially limit test coverage.
+
+  "Smart" fuzzers that observe changes in the execution of a process in response
+  to changes to the input data should in theory be able to overcome many of
+  these limitations. Unfortunately, most designs proposed to date attempted to
+  instrument run-time disassembly, trace applications step-by-step, or take 
+  similar expensive routes, suffering a massive performance blow that 
+  effectively canceled out any efficiency gain.
+
+  Bunny tries to approach the challenge from a slightly different angle, and
+  injects scalable, high-performance probes during precompilation stage. This
+  results in several key advantages:
+
+  - The approach does not feature a steep setup or learning curve. There is no
+    training or protocol knowledge necessary; any project can be automatically
+    instrumented with a drop-in replacement for GCC, and is immediately ready
+    for testing:
+
+      CC=/path/to/bunny-gcc ./configure
+      make
+
+  - There is no significant performance penalty involved. Core fuzzing
+    components are designed for highest speed, and feature cyclic SHM output
+    buffers with userland spinlocks, keep-alive architecture, and syscall
+    overhead limited to bare minimum. The instrumentation is injected in key
+    HLL control points, limiting the amount of data to be analyzed. On a typical
+    dual-core P4 desktop, fuzzing of a small utility peaks at 3600 execs/second,
+    compared to 4000 for a dummy loop.
+
+  - Both small and large real-life components can be instrumented and tested
+    alike. From zlib to libpng to OpenSSH, there is no need to alter the
+    build and testing process.
+
+  - Fine-grained configuration and easy automation. The fuzzer implements 9
+    neat fuzzing strategies and offers detailed controls over their behavior,
+    fuzzing depth, and the like. It features automated crash case sorting
+    and annotation and random-run scenarios for unattended, massively parallel
+    setups.
+
+  Smart features aside, Bunny is a good "classic" fuzzing application, too - 
+  with network output support and a number of fairly comprehensive fault 
+  injection strategies, it can be used to attack non-instrumented applications
+  as well.
+
+--------------------------------
+3. You mentioned prior work, eh?
+--------------------------------
+
+  Yes; several other folks toyed with the idea and released research papers
+  in the past, most notably:
+
+  * http://research.microsoft.com/users/pg/public_psfiles/SAGE-external-v1.pdf
+    (Automated Whitebox Fuzz Testing by Godefroid, Levin, Molnar)
+  * http://homes.dico.unimi.it/~monga/lib/sess07/28300052.pdf 
+    (A Smart Fuzzer for x86 Executables] by Lanzi, Martignoni, Monga, Paleari)
+
+  These designs are difficult to independently evaluate, as they remain 
+  non-public, and generally employ assembly-level instrumentation, which would 
+  appear to provide output of lower analytic quality.
+
+  A related public work at Google is Flayer by Will Drewry and Tavis Omandy -
+  a Valgrind-based tool that can be used to reach potentially vulnerable code,
+  then work your way up to figure out what inputs get you there:
+
+    http://googleonlinesecurity.blogspot.com/2007/09/information-flow-tracing-and-software.html
+
+--------------------------------
+4. So how does it work, exactly?
+--------------------------------
+
+  On a high level, the algorithm is remarkably simple:
+
+    0) Seed fuzzing queue with a known good input file.
+
+    1) Attempt several deterministic, sequential fuzzing strategies for
+       subsequent regions in the input file, as well as for regions that are
+       known to affect execution paths based on previously recorded data.
+
+    2) If any change resulted in a never previously observed execution path,
+       store the input that triggered it and queue it for further testing.
+
+    3) If any change resulted in an interesting change in any function call
+       parameter or return value within a known execution path (for example,
+       we now have -3 where we had 7 previously), store and queue the input.
+
+    4) If program fault is sensed for any input (crash, hang, etc), record this
+       event and make copy of the offending input data.
+
+    5) When done, fetch next input to be tested from queue, go to 1.
+
+  Bunny implements a total of 9 fuzzing stages:
+
+    Stage 0: fully random fuzzing of known execution path effectors
+    Stage 1: deterministic, walking bit flip of variable length
+    Stage 2: deterministic, walking value set operation of variable length
+    Stage 3: walking random value set of variable length
+    Stage 4: deterministic, walking block deletion of variable length
+    Stage 5: deterministic, walking block overwrite of variable length
+    Stage 6: deterministic, walking block duplication of variable length
+    Stage 7: deterministic, walking block swap of variable length
+    Stage 8: random stacking of any of the above operation (last resort)
+
+-------------------
+5. How do I use it?
+-------------------
+
+  Compile the fuzzer suite itself ('make'), then run the following against 
+  your target project:
+
+    cd /path/to/project/
+    CC=/path/to/bunny-gcc ./configure
+    make
+
+  Alternatively, simply use bunny-gcc to compile any standalone code, exactly
+  the way you would use GCC. The wrapper compiles OpenSSH, bash, and a number
+  of other open source projects cleanly - but if you encounter problems, do 
+  let me know.
+
+  Once compiled, the resulting binary can be manually traced by invoking
+  bunny-trace utility to peek at how the fuzzer sees the world, for example:
+
+    /path/to/bunny-trace /path/to/executable
+    +++ Trace of '/path/to/executable' started at 2007/09/07 21:06:01 +++
+    [19179] 000 .- main()
+    [19179] 001 | .- foo1(1)
+    [19179] 001 | `- = 7
+    [19179] 001 | .- foo2(2)
+    [19179] 001 | `- = 9
+    [19179] 001 | .- something(3, 4)
+    [19179] 001 | `- = 0
+    [19179] 001 | .- name13(5, 6, 7)
+    [19179] 001 | `- = 0
+    [19179] 000 +--- 10
+    [19179] 000 `- = 0
+    --- Process 19179 exited (code=0) ---
+
+  To run a proper fuzzing session, create a new directory (e.g., 'test') with
+  two empty subdirectories: 'in_dir' and 'out_dir'. Put the desired input file
+  to use as a seed for fuzzing in 'in_dir', under any name of your choice. 
+  Next, invoke 'bunny-main', passing the paths to your input and output 
+  directories, as well as directions on how to reach the target application
+  or network service, using appropriate command-line switches. 
+
+  Two most common usage scenarios are:
+
+    mkdir test
+    mkdir test/in_dir
+    mkdir test/out_dir
+    cp sample.jpg test/in_dir/
+
+    # If program accepts data on stdout:
+    ./bunny-main -i test/in_dir -o test/out_dir /path/to/app
+
+    # If program requires disk file input:
+    ./bunny-main -i test/in_dir -o test/out_dir -f test/infile.jpg \
+                  /path/to/app test/infile.jpg
+
+  And that's it - the output will be saved to out_dir/BUNNY.log; crash cases
+  will go to out_dir/FAULT*. Sit back and relax. If you want fast and dirty
+  results, consider adding -q and -k parameters to the command line.
+
+  For more sophisticated jobs, below is a list of all command line options
+  supported by bunny-main (defaults are reported when the program is called
+  with -h switch):
+
+  Fuzzed data output control:
+
+    -f file     - write fuzzer output to specified file before each testing
+                  round, instead of using fuzzed application's stdin.
+
+    -t h:p      - write fuzzer output to a TCP server running at host 'h',
+                  port 'p', after launching the traced application.
+
+    -u h:p      - write fuzzer output to UDP server, likewise.
+
+    -l port     - write fuzzer output to the first TCP client to connect to
+                  specified port.
+
+  Execution control:
+
+    -s nn       - time out if no instrumentation feedback is received for 'nn'
+                  milliseconds. Such a situation will be marked as a DoS
+                  condition and saved for analysis.
+
+    -x nn       - time out unconditionally after 'nn' milliseconds.
+
+    -d          - allow "dummy" mode: perform a single round of fuzzing even
+                  if no instrumentation is detected in the traced application,
+                  and just detect crashes in response to dumb fuzzing.
+
+    -n          - do not abandon a fuzzing round in which a fault occurred.
+                  May end up producing multiple similar crash cases, but
+                  slightly improves coverage.
+
+    -g          - use audible notification (aka "beep") to alert of crashes.
+                  The exact behavior of this depends on your terminal settings.
+
+  Fuzzing process control (these options affect performance):
+
+    -B nn[+s]   - controls bit flip fuzzing stage (1/8); limits flip run length
+                  to 'nn' bits, and uses a stepover of 's'.
+
+    -C nn[+s]   - controls chunk operations; limits chunk size to 'nn' bytes,
+                  uses a stepover of 's'.
+
+                  Note that chunk operations are time-consuming; keep this and
+                  -O options in check for larger files.
+
+    -O nn       - controls chunk operations; limits chunk displacement to 'nn'
+                  bytes.
+
+    -E nn       - controls effector registration; limits the number of
+                  effectors associated with a single trace value. Prevents 
+                  checksums and similar fields from diluting the effector set.
+
+    -X b:nn     - affects value walk stage (2/8); Bunny uses a set of 
+                  predefined "interesting" values, such as -1, 0, or MAX_INT,
+                  in order to trigger fault conditions (see config.h). You can
+                  override this set by specifying multiple -X parameters. First
+                  field, 'b', specified byte width (1, 2, or 4), second field
+                  is a signed integer to use.
+
+    -Y nn       - controls random walk stage (3/8); sets the number of random
+                  values to try before moving on.
+
+    -R nn       - controls random exploration stages; resets fuzzed file to
+                  its pristine state every 'nn' tries, stacks random 
+                  modifications in between.
+
+    -S nn       - controls random exploration stages; sets the number of random
+                  operations stacked in every round.
+
+    -N nn       - controls queue branching; caps the number of call paths
+                  registered in a single fuzzing round.
+
+    -P nn       - controls queue branching; likewise, but for parameter
+                  variations.
+
+    -L nn       - controls per-round calibration cycle count; these cycles
+                  are used to establish execution baseline, detect variable
+                  parameters such as time(0) or getpid() output, and the like.
+                  Use -L 1 to speed things up if you have no reason to suspect
+                  these are used by a program, or higher values to detect
+                  really sneaky cases.
+
+    -M nn       - controls trace depth; limits the number of instrumented
+                  function calls analyzed in each run. This is the primary
+                  method of managing tracing performance, memory usage, and
+                  trace time.
+
+    -F nn       - controls block operations; caps fuzzable data set size to
+                  prevent runaway size increments in some rare cases. By
+                  default set to initial set size, times 2.
+
+    -8          - controls value set stage; enables the use of all possible
+                  8-bit values, instead of the default subset of "interesting"
+                  ones. Recommended, time permitting.
+
+    -r          - controls parameter variation detection; enables finer-grained
+                  value ranging to detect more subtle differences (will result
+                  in far more variable paths being discovered). 
+
+    -z          - disables parameter variation detection; parameter path forks 
+                  will not be recorded. This is a very coarse but quick method.
+
+    -k          - disables deterministic fuzzing rounds, and goes straight to
+                  random stacking. This is a particularly useful for easy
+                  parallelization.
+
+    -q 		- randomizes queue processing; this might speed up discovery
+                  of deeper-nested problems, though there is no guarantee
+                  whatsoever.
+
+-----------------------
+6. Advanced usage notes
+-----------------------
+
+  This section contains assorted tips for optimizing fuzzing performance and
+  dealing with complex input scenarios
+
+  == NOTE #1: Minimizing fuzzing effort ==
+
+  For certain applications, it might be quite obviously highly advisable to 
+  make generic tweaks to the code in order to improve odds of fuzzing, such as
+  the removal of CRC32 checks, or flipping the switch on null encryption 
+  schemes.
+
+  == NOTE #2: Selective instrumentation tools ==
+
+  Bunny-gcc will automatically instrument function names, parameters, 
+  nesting level, and return values. This is optimal for almost all projects,
+  large and small - but when dealing with ultra-compact code, or targeting the 
+  inner workings of a single suspect function, you can install hooks manually, 
+  by adding a "BunnySnoop" preprocessor directive with an integer parameter 
+  inline in the function:
+
+    BunnySnoop table[0];
+
+  WARNING: Make sure that, no matter which call path within a function is
+  taken, a constant number of BunnySnoop statements will be encountered. A
+  mismatch will cause a runtime error, because the fuzzer can't immediately
+  figure out how to compare such variations in a meaningful manner.
+
+  In some cases, it is undesirable to instrument a particular function -
+  for example, if it is invoked in a read loop to perform a fairly mundane
+  task, and produces megabytes of useless trace information; to manually
+  suppress instrumentation, use 'BunnySkip' directive immediately before a 
+  { ... } block, for example:
+ 
+    static int do_boring_stuff(char* buf) BunnySkip {
+      ...
+    }
+
+  == NOTE #3: Advanced output structure management ==
+
+  Bunny supports selective fuzzing of files and multi-packet network output:
+
+  1) Each file placed in there is output in a separate write; if you wish to 
+     send multiple packets, this is a method to achieve this. Files in this 
+     directory will be sorted and used in a default alphasort order. e.g.:
+
+     packet0001, packet0002, packet0003 ...
+
+  2) File names ending with '.keep' will *not* be fuzzed, but passed through 
+     as-is. This is useful for excluding chunks of a large input set from the 
+     tests for performance reasons. 
+
+  3) If a 0-sized *.keep file is encountered, and the output is to a network
+     socket, the output component will pause to sink an input packet received
+     from the remote party before continuing. This can be used to fuzz 
+     interactive client-server communications (e.g., wait for a response 
+     before sending a new command).
+
+  The number of "fuzzable" bytes has a linear impact on the speed of testing,
+  simply because most of the fuzzing steps involve deterministic, sequential
+  changes to the data. File sizes between 1 and 250 bytes are probably optimal,
+  assuming default settings.
+
+------------------
+7. Troubleshooting
+------------------
+
+  This section describes common real-world fuzzing problems (P), and 
+  suggestions (S) on how to deal with them.
+
+  P: I cannot build the fuzzer itself because of '-Wno-pointer-sign' error.
+
+  S: Use a newer version of GCC or remove the first occurrence of
+     -Wno-pointer-sign in project's Makefile.
+
+  P: When I try to issue 'make' on a program to be instrumented, I get libtool
+     lock errors and the compilation hangs.
+
+  S: This is because of an ill-conceived check in some autoconf files. This
+     check inevitably breaks with some compilers. Re-run ./configure but append 
+     --disable-libtool-lock to its command-line options, then try 'make' again.
+
+  P: Bunny completes a couple of fuzzing rounds and gives up.
+
+  S: The utility can't find enough interesting call paths to follow.
+     Try the following:
+
+     - If you are fuzzing a library, make sure not only the test program, but 
+       also the library itself is properly instrumented, and that your test
+       program indeed uses the instrumented copy, not a system-wide version.
+       Use LD_LIBRARY_PATH to guide the dynamic linker.
+
+     - Make sure that the targeted code does not reside in a single, compact 
+       function - if so, you have to instrument the function manually using 
+       "BunnySnoop" directive (see section 5).
+
+     - Make sure that the initial input file makes sense to the traced program 
+       and triggers the instrumented functionality.
+
+     - If any mentions of skipped function calls appear in the output of the
+       fuzzer, Crank up the depth of instrumentation (-P parameter) to a higher
+       value.
+
+     - Crank up the intensity of fuzzing to get to other code locations: specify 
+       -8, increase limits for -R, -S, -B, -C, and -O options.
+
+  P: Bunny keeps finding tons of new call paths and there is no end in sight.
+
+  S: Too much branching is undesirable, as it might compromise the coverage of
+     performed tests. Try the following:
+
+     - Adjust -M parameter to reduce the depth of instrumentation,
+
+     - Ensure uniform testing space: use -q option to randomize queue processing,
+       -k to skip sequential fuzzing rounds,
+
+     - Run the application under bunny-trace and see if there are any recursive
+       calls that do not serve an important function. If so, use "BunnySkip" to
+       selectively disable instrumentation (see section 5).
+
+     - If most of these are parameter-related variations, decrease -P to a very
+       small value to rate-limit this aspect of exec path exploration, or -z to 
+       inhibit it altogether.
+
+  P: Fuzzing is very slow, and I'm getting bogus "timeout" crash reports.
+
+  S: The traced application is painfully slow. Try the following:
+
+     - Adjust -s and -x options to raise time quotas allotted to each run,
+
+     - Reduce input file size (for example, use a 2x2 JPEG with no EXIF
+       data or comments, instead of a 100k photo),
+
+     - Reduce -R, -S, -B, -C, and -O option values to speed up fuzzing,
+       consider using -k to disable most fuzzing rounds altogether,
+
+     - Move the process to a faster machine.
+
+     - Investigate how to speed up the traced application - enable 
+       optimization, prelink, add code to bail out on known DoS conditions, 
+       etc,
+
+  P: I want to trace a non-instrumented application.
+
+  S: Use -d option, and be sure to crank up -R, -S, -B, and -C limits, possibly
+     use -8 option - in this mode, Bunny will execute a single round of testing
+     only, so get the best of it.
+
+-----------------------------
+8. Limitations & known issues
+-----------------------------
+
+  The approach implemented by Bunny will be ineffective against protocols that 
+  implement very strong checksums or other constraints that are nearly 
+  impossible to brute-force - although unlike traditional fuzzing, it should
+  be reasonably effective against weak checksums.
+  
+  When operating on auto-instrumented C-function level, it is unlikely for 
+  this or any other protocol-blind fuzzer to discover new non-trivial syntax 
+  (such as an undocumented HTML tag or a complex protocol message) if it is not
+  a part of the input file and cannot be gradually derived from it, unless you
+  instrument functions such as strcmp(); but then again, bunny should be 
+  remarkably more effective once such a syntax is accidentally stumbled upon.
+
+  Known issues with the current code:
+
+  - The only platforms known to work fine are Linux, *BSD, and Cygwin on IA32
+    platforms. Support for 64-bit and other unix platforms is not confirmed. 
+    There is no support for non-x86 architectures, although this requires very
+    few tweaks to correct.
+
+  - Multiple threads and processes are supported, and input will be collected
+    from all threads and properly separated - but the trace continues only
+    as long as the initial process is running, and only the initial process
+    will be surveyed for SEGV and similar fault conditions. There is no easy
+    way to intercept child process signals on Linux without resorting to
+    dirty ptrace() tricks or signal handler injection.
+
+  - The C parser and its hooks is not necessarily compatible with restricted
+    dialects of C that do not implement C99 + GNU extensions. This is because
+    the instrumentation code uses __attribute__ features to gain unobtrusive
+    access to library functions and suppress certain warnings. Bunny-gcc will
+    strip any flags that restrict the dialect of an input file, and this might
+    have an adverse effect in some rare circumstances.
+
+  - Bunny-exec registers call paths in the order of appearance, and can't
+    recover cleanly from a situation where this changes randomly because of 
+    scheduler decisions when multiple threads are spawned (nearly) at once.
+    I see no easy way to solve this, and it might be not worth the effort.
+
+  - On calls to longjmp or with newly spawned threads, the nesting level 
+    reported by bunny-trace might be off. This does not affect the tracing
+    process.
+
+  - varargs are not supported, which limits the amount of data collected about
+    some relatively rare internal functions (again, the overhead needed for
+    handling this is considerable, and there seem to be no cases that would
+    warrant it).
+    
+  - Every unique call path encountered (but *not* every unique parameter
+    sequence) uses up several kilobytes of memory and is kept indefinitely
+    in process address space. The record contains important calibration and
+    effector data needed to properly handle revisits to that call path with
+    new parameters, and cannot be simply deallocated. This is typically not
+    a problem for short-run fuzzing, but when we enter the domain of billions
+    of exec cycles, we might eventually hit the 2 GB limit. Storing older data
+    on disk might be advisable.
+
+

@@ -1,0 +1,23 @@
+Version 0.93-beta (2008-05-21):
+
+  - Bug fix to -8 option logic.
+
+Version 0.92-beta (2007-11-06):
+
+  - IPC handling bug fix, some other IA64 cases.
+
+    Thanks to Nicholas Marriott for spotting the problem.
+
+Version 0.91-beta (2007-11-06):
+
+  - Some show-stopping network handling bugs corrected (d'oh).
+  - Some tweaks to make the code usable on 64-bit platforms,
+  - Path search added,
+  - Minor Makefile fixes and other tweaks.
+
+  Thanks to Nicholas Marriott, J.M. Seitz, Jim Paris, and 
+  Vijay Ramesh for bringing these to my attention.
+
+Version 0.9-beta (2007-11-01):
+
+  - Initial release.
