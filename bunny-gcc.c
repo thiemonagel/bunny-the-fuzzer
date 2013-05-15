@@ -707,7 +707,7 @@ handle_as_colon:
 	  }
 	
 	  /* So, we indeed have a declaration and nothing more. */
-	  if (check_decl && !code_nest && !expr_nest) {
+	  if (!code_nest && !expr_nest) {
 	    DEBUGF("<<no function body detected, bailing out>>\n");
 	    DYN_FREE(params);
 	    free(func_name);
