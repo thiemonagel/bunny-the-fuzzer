@@ -816,7 +816,7 @@ static void validate_dirs(void) {
 
 
 static void exit_nicely(int sig) {
-  debug("+++ bunny-flow terminated +++\n");
+  debug("+++ bunny-flow terminated by signal %i +++\n", sig);
   exit(0);
 }
 
