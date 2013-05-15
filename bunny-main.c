@@ -52,6 +52,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <openssl/md5.h>
+#include <math.h>
 
 #ifndef O_LARGEFILE
 #define O_LARGEFILE 0
@@ -134,6 +135,10 @@ static _u8  use_builtin_vals = 1,		/* Rely on builtin Val tables?    */
             use_qrand,				/* Randomize queue processing     */
             use_beep;				/* Beep on crash?		  */
 
+
+struct timeval st, en;
+
+
 static struct naive_list_int   byte_val_list,	/* User defined value tables      */
                                word_val_list,   /* (for various value widths)     */
                                dword_val_list;
@@ -193,12 +198,33 @@ static void check_shm_cap(void) {
 }
 
 
+void print_stats() {
+  gettimeofday(&en,0);
+  float dtime = en.tv_sec - st.tv_sec + ((float)en.tv_usec - st.tv_usec)/1e6;
+  
+  outf("\n"
+       "  Fuzz cycles executed : %u (%u partial)\n"
+       "    Processes launched : %llu\n"
+       "      Fault conditions : %u\n"
+       "       Call path count : %u (+%u ignored)\n"
+       "  Parameter variations : %u (+%u ignored)\n"
+       "     Effector segments : %u\n"
+       "    Total running time : %u:%02u:%02u\n"
+       "   Average performance : %0.02f execs/sec\n",
+       cur_cycle, fuzz_ign, exec_cnt, crash_cnt, epath_cnt, epath_ign,
+       ppath_cnt, ppath_ign, effect_cnt,
+       (int)(dtime/3600.), (int)((dtime-floorf(dtime/3600.)*3600.)/60.), (int)(dtime-floorf(dtime/60.)*60.),
+       (float)exec_cnt / (dtime - 1.1 * usleeps_done ));
+}
+
+
 /* Termination signal handler; sending SIGTERM to bunny-flow and bunny-exec
    ensures a proper cleanup of SHM regions and child processes. */
 static void handle_sig(int sig) {
+  print_stats();
+  outf("\n+++ Fuzzing stopped on signal %d +++\n", sig);
   if (flow_pid != -1) kill(flow_pid,SIGTERM);
   if (exec_pid != -1) kill(exec_pid,SIGTERM);
-  outf("+++ Fuzzing stopped on signal %d +++\n", sig);
   fclose(outfile);
   exit(1);
 }
@@ -1860,7 +1886,6 @@ static void init_random(void) {
 /* getopt() and not much more */
 int main(int argc, char** argv) {
   _u8* q, ef;
-  _u32 st, en;
   _s32 opt;
   struct bunny_traceitem *ref;
 
@@ -2061,7 +2086,7 @@ int main(int argc, char** argv) {
 
   if (use_builtin_vals) init_builtin_vals();
 
-  st = time(0);
+  gettimeofday(&st,0);
 
   init_random();
 
@@ -2079,26 +2104,12 @@ int main(int argc, char** argv) {
 
   while ((q = get_queue(&ref,&ef)))
     process_fuzz_main(q,ref,ef);
+
+  print_stats();
+  outf("\n[+] Exiting gracefully.\n");
   
   if (flow_pid > 0) kill(flow_pid,SIGTERM);
   if (exec_pid > 0) kill(exec_pid,SIGTERM);
-
-  en = time(0);
-  
-  outf("\n"
-       "  Fuzz cycles executed : %u (%u partial)\n"
-       "    Processes launched : %llu\n"
-       "      Fault conditions : %u\n"
-       "       Call path count : %u (+%u ignored)\n"
-       "  Parameter variations : %u (+%u ignored)\n"
-       "     Effector segments : %u\n"
-       "    Total running time : %u:%02u:%02u\n"
-       "   Average performance : %0.02f execs/sec\n"
-       "\n"
-       "[+] Exiting gracefully.\n",
-       cur_cycle, fuzz_ign, exec_cnt, crash_cnt, epath_cnt, epath_ign, 
-       ppath_cnt, ppath_ign, effect_cnt, (en-st)/60/60, ((en-st)/60) % 60,(en-st) % 60,
-         ((float)exec_cnt) / (1 + en-st - (11.0 * usleeps_done) / 10 ));
 
   unlink(N(out_dir,".fake-pipe"));
   unlink(N(out_dir,".flow-in"));
