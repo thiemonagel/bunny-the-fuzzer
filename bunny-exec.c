@@ -26,6 +26,10 @@
 */
   	    
 	    
+/* set default to resume interrupted primitives, avoiding EINTR,
+   cf. GNU LIBC manual 24.5 "Primitives Interrupted by Signals" */
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
