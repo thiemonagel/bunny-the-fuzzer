@@ -421,6 +421,7 @@ static void handle_process(_u8* path, _u8** argv) {
   if (orig_pid < 0) fatal("unable to spawn a process");
 
   if (!orig_pid) {  
+    setpgid(0,0);   /* set new process group */
     execvp(path,(char**)argv);
     pfatal("unable to execute '%s'",path);
   }
