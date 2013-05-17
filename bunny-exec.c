@@ -669,7 +669,7 @@ int main(int argc,char** argv) {
 
     disable_timers();
 
-    if (!((++run_cnt) % TRUNC_FREQ)) {
+    if (TRUNC_FREQ && !((++run_cnt) % TRUNC_FREQ)) {
       /* Every TRUNC_FREQ execs, truncate stdin/stdout if possible, ignore errors. */
       lseek(1,0,SEEK_SET);
       lseek(2,0,SEEK_SET);

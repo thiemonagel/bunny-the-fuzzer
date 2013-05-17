@@ -68,7 +68,7 @@
 
 /* bunny-exec log might grow large and trip filesystem limits; to prevent this, we
    truncate it every TRUNC_FREQ runs; adjust this value to get the amount of
-   diagnostic data you need. */
+   diagnostic data you need.  Set to 0 to disable log truncation. */
 #define TRUNC_FREQ      1000
 
 /* List of "interesting values" for byte/word/dword walk testing */
