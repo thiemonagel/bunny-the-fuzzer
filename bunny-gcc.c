@@ -47,6 +47,7 @@
 #include "nlist.h"
 #include "gcc-hook.h"
 #include "message.h"
+#include "util.h"
 
 static struct naive_list 
   used_files,			/* C source files to be processed */
@@ -1003,7 +1004,7 @@ static void dump_code(void) {
     fin = open(fname, O_RDONLY);
     if (!fin) pfatal("unable to read '%s'",fname);
     
-    while ((i=read(fin,cbuf,sizeof(cbuf))) > 0) write(fout,cbuf,i);
+    while ((i=sure_read(fin,cbuf,sizeof(cbuf))) > 0) sure_write(fout,cbuf,i);
     
     close(fin);
     if (output_file) close(fout);

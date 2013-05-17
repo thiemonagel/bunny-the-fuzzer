@@ -63,6 +63,7 @@
 #include "nlist.h"
 #include "message.h"
 #include "range.h"
+#include "util.h"
 
 #define R(x)	(random() % (x))
 #define R32()	((random() << 16) ^ random())
@@ -354,10 +355,10 @@ static _u32 flow_command(_u32 type, _u32 p1, _u32 p2, _u32 p3) {
   f.p2   = p2;
   f.p3   = p3;
   
-  if (write(flow_pipe_cmd,&f,sizeof(struct bunny_flowreq)) != sizeof(struct bunny_flowreq))
+  if (sure_write(flow_pipe_cmd,&f,sizeof(struct bunny_flowreq)) != sizeof(struct bunny_flowreq))
     fatal("unable to communicate with the component (see bunny-flow.out)");
     
-  if (read(flow_pipe_ret,&r,sizeof(_u32)) != sizeof(_u32))
+  if (sure_read(flow_pipe_ret,&r,sizeof(_u32)) != sizeof(_u32))
     fatal("short response on command 0x%x(%d,%d,%d) (see bunny-flow.out)",type,p1,p2,p3);
     
   if (type != FLOW_GET_FUZZABLE && r)
@@ -379,13 +380,13 @@ static void flow_savefile(_u8* fname) {
   f.p2   = 0;
   f.p3   = 0;
   
-  if (write(flow_pipe_cmd,&f,sizeof(struct bunny_flowreq)) != sizeof(struct bunny_flowreq))
+  if (sure_write(flow_pipe_cmd,&f,sizeof(struct bunny_flowreq)) != sizeof(struct bunny_flowreq))
     fatal("unable to communicate with the component (see bunny-flow.out)");
 
-  if (write(flow_pipe_cmd,fname,f.p1) != f.p1)
+  if (sure_write(flow_pipe_cmd,fname,f.p1) != f.p1)
     fatal("unable to communicate with the component (see bunny-flow.out)");
     
-  if (read(flow_pipe_ret,&r,sizeof(_u32)) != sizeof(_u32))
+  if (sure_read(flow_pipe_ret,&r,sizeof(_u32)) != sizeof(_u32))
     fatal("short response on FLOW_SAVEFILE (see bunny-flow.out)");
     
   if (r)
@@ -655,25 +656,6 @@ static void launch_exec(_u8* infn) {
 }
 
 
-
-/* Read large block of data at once, regardless of OS buffer limits.
-   Used to communicate with bunny-exec. */
-static _s32 sure_read(_s32 fd, void* buf, _u32 len) {
-  _u32 total = 0;
-
-  do {
-    _s32 cur = read(fd,buf,len);
-    if (cur <= 0) return cur;
-    total += cur;
-    len   -= cur;
-    buf   += cur;
-  } while (len);
-
-  return total;
-  
-}
-
-
 /* Launch a program, apply path profiling data if reference trace is available,
    allocate all the structures necessary, etc... */
 static struct bunny_traceitem* run_program(void) {
@@ -701,7 +683,7 @@ static struct bunny_traceitem* run_program(void) {
   if (exec_pid < 0) launch_exec(infn);
     else kill(exec_pid,SIGUSR1);
   
-  if (read(exec_pipe_ret,&btd,sizeof(struct bunny_tracedesc)) != sizeof(struct bunny_tracedesc))
+  if (sure_read(exec_pipe_ret,&btd,sizeof(struct bunny_tracedesc)) != sizeof(struct bunny_tracedesc))
     fatal("short trace struct read (see bunny-exec.out)");
 
   ret->fuzzable     = 0;    
@@ -717,7 +699,7 @@ static struct bunny_traceitem* run_program(void) {
     _u8* tmp = malloc(btd.fault_len + 1);
     if (!tmp) fatal("out of memory");
     
-    if (read(exec_pipe_ret,tmp,btd.fault_len) != btd.fault_len)
+    if (sure_read(exec_pipe_ret,tmp,btd.fault_len) != btd.fault_len)
       fatal("short fault location read (see bunny-exec.out)");
       
     tmp[btd.fault_len]  = 0;

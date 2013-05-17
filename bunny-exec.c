@@ -56,6 +56,7 @@
 #include "nlist.h"
 #include "message.h"
 #include "range.h"
+#include "util.h"
 
 static FILE* outfile;
 #define outf(x...) fprintf(outfile,x)
@@ -252,24 +253,6 @@ static void timeout(int sig) {
 }
 
 
-/* Write large block of data at once, regardless of OS buffers. */
-static _s32 sure_write(_s32 fd, void* buf, _u32 len) {
-  _u32 total = 0;
-
-  do {
-    _s32 cur = write(fd,buf,len);
-    if (cur <= 0) return cur;
-    total += cur;
-    len   -= cur;
-    buf   += cur;
-  } while (len);
-
-  return total;
-
-}
-
-
-
 /* Final cleanup and reporting service, called when trace is finished */
 static void finalize(void) {
   _u32 rno, i;
@@ -357,10 +340,10 @@ static void finalize(void) {
   if (fault_loc && (exitflags & (EXITF_TIMEOUT|EXITF_STUCK|EXITF_CRASH)))
     msg.fault_len = strlen(fault_loc); else msg.fault_len = 0;
 
-  if (write(99, &msg, sizeof(msg)) != sizeof(msg))
+  if (sure_write(99, &msg, sizeof(msg)) != sizeof(msg))
     fatal("short control write to fd #99");
 
-  if (msg.fault_len && write(99, fault_loc, msg.fault_len) != msg.fault_len)
+  if (msg.fault_len && sure_write(99, fault_loc, msg.fault_len) != msg.fault_len)
     fatal("short fault data write to fd #99");
 
   for (rno=0;rno<proc_cnt;rno++) 

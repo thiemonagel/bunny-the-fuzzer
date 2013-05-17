@@ -56,6 +56,7 @@
 #include "debug.h"
 #include "nlist.h"
 #include "message.h"
+#include "util.h"
 
 static _u8 *indir, *outdir;
 
@@ -178,7 +179,7 @@ static void load_data(_u32 rec) {
   if (!infile[rec].data) fatal("out of memory");
     
   if (infile[rec].orig_len)
-    if (read(fd,infile[rec].data,infile[rec].orig_len) != infile[rec].orig_len)
+    if (sure_read(fd,infile[rec].data,infile[rec].orig_len) != infile[rec].orig_len)
       fatal("short read from '%s/%s'",indir,infile[rec].fname);
 
   close(fd);
@@ -511,7 +512,7 @@ static void commit_data_fd(_u32 fd) {
       if (of < 0) pfatal("unable to create '%s/%s'",outdir,infile[i].fname);
 
       if (infile[i].cur_len)
-        if (write(of,infile[i].data,infile[i].cur_len) != infile[i].cur_len)
+        if (sure_write(of,infile[i].data,infile[i].cur_len) != infile[i].cur_len)
           fatal("short write to '%s/%s'",outdir,infile[i].fname);    
   
       close(of);
@@ -530,7 +531,7 @@ static void commit_data_fd(_u32 fd) {
          it might at some point become incapable of receiving our
 	 data. */
     
-      if (write(fd,infile[i].data,infile[i].cur_len) != infile[i].cur_len)
+      if (sure_write(fd,infile[i].data,infile[i].cur_len) != infile[i].cur_len)
         debug("WARNING: Unable to complete write to output stream.\n");
 	
     } else if (infile[i].asis) {
@@ -540,7 +541,7 @@ static void commit_data_fd(_u32 fd) {
 	 precisely what we want. */
 	 
       _u8 sink[MAXTOKEN];
-      read(fd,sink,MAXTOKEN);
+      sure_read(fd,sink,MAXTOKEN);
     }
     
   }

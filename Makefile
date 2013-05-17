@@ -27,19 +27,19 @@ EX_LIBS  = -lcrypto -lm
 
 all: $(PROGNAME)
 
-bunny-gcc: bunny-gcc.c config.h debug.h nlist.h types.h message.h gcc-hook.h $(EXTRA_C)
+bunny-gcc: bunny-gcc.c config.h debug.h nlist.h types.h message.h gcc-hook.h util.h $(EXTRA_C)
 	$(CC) $(CFLAGS) $@.c $(EXTRA_C) -o $@ $(EX_LIBS) 
 
 bunny-trace: bunny-trace.c config.h debug.h nlist.h types.h message.h $(EXTRA_C)
 	$(CC) $(CFLAGS) $@.c $(EXTRA_C) -o $@ $(EX_LIBS) 
 
-bunny-flow: bunny-flow.c config.h debug.h nlist.h types.h message.h $(EXTRA_C)
+bunny-flow: bunny-flow.c config.h debug.h nlist.h types.h message.h util.h $(EXTRA_C)
 	$(CC) $(CFLAGS) $@.c $(EXTRA_C) -o $@ $(EX_LIBS) 
 
-bunny-exec: bunny-exec.c config.h debug.h nlist.h types.h message.h range.h $(EXTRA_C)
+bunny-exec: bunny-exec.c config.h debug.h nlist.h types.h message.h range.h util.h $(EXTRA_C)
 	$(CC) $(CFLAGS) $@.c $(EXTRA_C) -o $@ $(EX_LIBS) 
 
-bunny-main: bunny-main.c config.h debug.h nlist.h types.h message.h range.h $(EXTRA_C)
+bunny-main: bunny-main.c config.h debug.h nlist.h types.h message.h range.h util.h $(EXTRA_C)
 	$(CC) $(CFLAGS) $@.c $(EXTRA_C) -o $@ $(EX_LIBS) 
 
 TESTCASE1 = tests/testcase1
