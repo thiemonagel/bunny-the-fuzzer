@@ -98,6 +98,7 @@ static _u32 write_host,				/* Data output host, if any       */
 	    use_udp,				/* Protocol to use                */
 	    stall_limit         = 2000,		/* Stalled process timeout        */
 	    time_limit          = 5000,		/* General process timeout        */
+            assure_crash        = 0,            /* Number crash confirmations     */
 	    bitflip_inc         = 1,		/* Bitflip stepover               */
 	    bitflip_max         = 8,		/* Max bitflip width              */
 	    chunk_inc           = 1,		/* Chunk modifier stepover        */
@@ -828,6 +829,22 @@ static void discard_context(struct bunny_traceitem* t, _u8 free_t) {
 }
 
 
+/* Loop the program until it doesn't crash once or 'assure_crash+1' crashes in
+   a row have been observed. */
+static struct bunny_traceitem* retry_program(void) {
+  int count = 0;
+  struct bunny_traceitem *t = run_program();
+  while (count < assure_crash && t->exit_status & (EXITF_CRASH | EXITF_TIMEOUT | EXITF_STUCK)) {
+    discard_context(t,1);
+    t = run_program();
+    count++;
+  }
+  if (t->exit_status & (EXITF_CRASH | EXITF_TIMEOUT | EXITF_STUCK)) count++;
+  if (count) outf("      A crash was encountered that could be re-produced %i time(s).\n", count-1);
+  return t;
+}
+
+
 /* Empty an input directory for a fully processed queue entry. */
 static void free_input(_u8* dir,_u8 deldir) {
   DIR* d;
@@ -1138,7 +1155,7 @@ static _u8 bitflip_walk(struct bunny_traceitem* t, _u32 flip) {
     } else
       flow_command(FLOW_BITFLIP,0,flip,0);
 
-    n = run_program();
+    n = retry_program();
 
     if (check_crash(n)) {
       outf("flipping %u bits at bit offset #%u.\n\n",flip,pos);
@@ -1200,7 +1217,7 @@ static _u8 valset_walk(struct bunny_traceitem* t, _u8 size) {
         case 4: flow_command(FLOW_SETDWORD, pos, (rval = (_s32)l->v[val]), 0); break;
       }
 
-      n = run_program();
+      n = retry_program();
 
       if (check_crash(n)) {
         outf("setting offset #%u to %d (%s).\n\n",pos, rval,
@@ -1259,7 +1276,7 @@ static _u8 valset_rand_walk(struct bunny_traceitem* t, _u8 size) {
         case 4: flow_command(FLOW_SETDWORD, pos, (rval = R32()), 0); break;
       }
 
-      n = run_program();
+      n = retry_program();
 
       if (check_crash(n)) {
         outf("setting offset #%u to %d (%s).\n\n",pos, rval,
@@ -1326,7 +1343,7 @@ static _u8 chunk_walk(struct bunny_traceitem* t, _u32 oper, _u32 csize) {
 
         flow_command(oper,dst,csize,src);
 
-        n = run_program();
+        n = retry_program();
 
         if (check_crash(n)) {
           outf("%s %u bytes from offset #%u to #%u.\n\n",
@@ -1389,7 +1406,7 @@ static _u8 delete_walk(struct bunny_traceitem* t, _u32 csize) {
     flow_command(FLOW_RESET,0,0,0);
     flow_command(FLOW_DELETE,pos,csize,0);
 
-    n = run_program();
+    n = retry_program();
 
     if (check_crash(n)) {
         outf("deleting %u bytes at offset #%u.\n\n",
@@ -1468,7 +1485,7 @@ static _u8 eff_valset_walk(struct bunny_traceitem* t) {
         default: flow_command(FLOW_SETDWORD, eff->v1[eno], rval, 0); break;
       }
 
-      n = run_program();
+      n = retry_program();
  
       if (check_crash(n)) {
         outf("setting offset #%u to %d (%s).\n\n",eff->v1[eno], rval,
@@ -1573,7 +1590,7 @@ static _u8 random_stack(struct bunny_traceitem* t) {
 
     }
 
-    n = run_program();
+    n = retry_program();
   
     if (check_crash(n)) {
       outf("random rearrangement.\n\n");
@@ -1896,7 +1913,8 @@ int main(int argc, char** argv) {
   signal(SIGPIPE,SIG_IGN);
   signal(SIGTERM,handle_sig);
 
-  while ((opt = getopt(argc,argv,"+i:o:f:t:u:l:s:x:B:C:O:E:L:X:Y:R:S:N:P:M:F:n8drkqgz")) > 0) 
+  /* unused characters: bcegjmpwy */
+  while ((opt = getopt(argc,argv,"+i:o:f:t:u:l:s:x:a:B:C:O:E:L:X:Y:R:S:N:P:M:F:n8drkqgz")) > 0) 
     switch (opt) {
     
       case 'i': {
@@ -1959,6 +1977,10 @@ int main(int argc, char** argv) {
 	if (!time_limit) time_limit = 60 * 1000;
 	break;
 	
+      case 'a':
+	assure_crash = par_atou(optarg,opt,1);
+	break;
+
       case 'q':
         use_qrand = 1;
 	break;

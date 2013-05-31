@@ -230,6 +230,9 @@ Bunny the Fuzzer
                   May end up producing multiple similar crash cases, but
                   slightly improves coverage.
 
+    -a nn       - assure that crash is reproducible by re-trying 'nn' times.
+       	          Defaults to 0 (no retries).
+
     -g          - use audible notification (aka "beep") to alert of crashes.
                   The exact behavior of this depends on your terminal settings.
 
