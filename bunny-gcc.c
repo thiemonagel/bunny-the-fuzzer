@@ -56,7 +56,7 @@ static struct naive_list
 
 static _u32 mypid;
 
-static _u8 gcc_mode;		/* -c, -E, -o, etc */
+static _u8 gcc_mode = '\0';	/* -c, -E, -o, etc */
 static _u8* output_file;	/* final -o parameter */
 
 /*
@@ -117,10 +117,11 @@ static void parse_params(_u32 argc, _u8** argv) {
 
         /* BINARY OPTIONS TO KEEP OFF PREPROCESSOR COMMAND LINE */
 	
+	case c_alone('M'): /* Makefile output (takes precedence over any other mode) */
 	case c_alone('c'): /* stop at assembly      */
 	case c_alone('E'): /* stop at preprocessing */
 	case c_alone('S'): /* stop at compiling     */
-	  gcc_mode = argv[pos][1];
+	  if (gcc_mode != 'M') gcc_mode = argv[pos][1];
 	  ADD(compile_params,argv[pos]);
 	  break;
 
@@ -1023,6 +1024,17 @@ int main(int argc,char** argv) {
   debug("[bunny] bunny-gcc " VERSION " (" __DATE__ " " __TIME__ ") by <lcamtuf@google.com>\n");
 
   parse_params((_u32)argc,(_u8**)argv);
+
+  /* Don't even try to understand what's going on.  Just call the original
+     compiler with the original options. */
+  if (gcc_mode == 'M' || used_files.c == 0) {
+    _u8 *gcc = getenv("BUNNY_GCC");
+    if (!gcc) gcc = "/usr/bin/gcc";
+    argv[0] = gcc;
+    wait_execvp(gcc, (_u8**)argv);
+    exit(0);
+  }
+
   precompile();
   insert_hooks();
   
