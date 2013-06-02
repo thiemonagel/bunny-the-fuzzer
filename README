@@ -349,6 +349,10 @@ Bunny the Fuzzer
       ...
     }
 
+  This directive may also be written as '/*BunnySkip*/' to preserve the
+  possibility to compile with the standard compiler.  (Note that there is no
+  whitespace allowed between the begin-of-comment token '/*' and 'BunnySkip'.)
+
   == NOTE #3: Advanced output structure management ==
 
   Bunny supports selective fuzzing of files and multi-packet network output:
