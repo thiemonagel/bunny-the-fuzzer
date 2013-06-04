@@ -325,6 +325,7 @@ static void init_outfile(void) {
   fd = open(fn,O_WRONLY|O_CREAT|O_EXCL|O_LARGEFILE,0600);
   if (fd < 0) pfatal("cannot create '%s'",fn);
   outfile = fdopen(fd,"w");
+  setvbuf(outfile, 0, _IOLBF, 0);
   
 }
 
