@@ -49,6 +49,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sched.h>
+#include <errno.h>
 
 #include "types.h"
 #include "config.h"
@@ -85,9 +86,9 @@ static _u32 stuck_limit;		/* Stale process trace time limit  */
 static _u32 func_limit;			/* Total number of calls to report */
 static _u32 total_calls;		/* Function call counter           */
 static _u8  exitflags;			/* EXTTF_*                         */
-static _s32 orig_pid;			/* Original PID                    */
-static _u8  timeout_done;		/* Timeout handled?                */
 static _u8* fault_loc;			/* Most recent fault location      */
+static volatile _s32 orig_pid;		/* Original PID                    */
+static volatile _u8  timeout_done;	/* Timeout handled?                */
 
 
 /* Locate process entry, create one if requested */
@@ -234,6 +235,7 @@ static void timeout(int sig) {
   _u32 i;
 
   if (timeout_done) return;
+  int safe_errno = errno;
 
   gettimeofday(&t,0);
   
@@ -246,16 +248,12 @@ static void timeout(int sig) {
 
   timeout_done = 1;
 
-#ifdef DEBUG_TRACE
-    printf("[bunny-exec] Execution timed out (diff = %u), orig_pid = %u, shmreg->lock = %u...\n",
-           i, orig_pid, shmreg->lock);
-#endif /* DEBUG_TRACE */
-
   /* Just let report_kids() take its course, it's safer than calling non-reentrant code
      from here. */
 
   if (orig_pid > 1) kill(-orig_pid,SIGKILL);
-  
+
+  errno = safe_errno;
 }
 
 
