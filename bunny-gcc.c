@@ -781,7 +781,7 @@ handle_as_colon:
 	  
             outf(" volatile char __attribute__((unused)) __dummy_i = "
                  "__bunny_send_msg(0x%08x,%u,\"%s\",%u); ", MESSAGE_ENTER,
-                params.c, func_name, strlen(func_name));
+		 params.c, func_name, (_u32)strlen(func_name));
 							
             for (i=0;i<params.c;i++) 
               outf(" volatile char __attribute__((unused)) __dummy_%03u = "
