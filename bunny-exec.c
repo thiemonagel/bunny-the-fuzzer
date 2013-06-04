@@ -90,16 +90,6 @@ static _u8  timeout_done;		/* Timeout handled?                */
 static _u8* fault_loc;			/* Most recent fault location      */
 
 
-/* Drop-in replacement for kill() which attempts to prevent killing the
-   session in cases of corrupted pids (-1 has been observed). */
-static int prudent_kill(pid_t pid, int sig) {
-  if (pid <= 0) {
-    if (pid < 0) debug("[bunny-exec] Not killing negative pid %i!\n", pid);
-    return -1;
-  } else return kill(pid, sig);
-}
-
-
 /* Locate process entry, create one if requested */
 static _s32 get_procentry(_u32 pid,_u8 make_new) {
   _u32 rno;
@@ -223,9 +213,10 @@ static _u8 report_kids(void) {
     exitflags |= EXITF_CRASH;
   }
 
-  /* Kill all registered child processes */
+  /* Kill process group and registered child processes (just to be safe). */
+  if (orig_pid > 1) kill(-orig_pid,SIGKILL);
   for (i=0;i<proc_cnt;i++) {
-    if (prudent_kill(procs[i].pid,SIGKILL) == 0) {
+    if (procs[i].pid > 0 && kill(procs[i].pid,SIGKILL) == 0) {
 #ifdef DEBUG_TRACE
       printf("[bunny-exec] killed child %i\n", procs[i].pid);
 #endif /* DEBUG_TRACE */
@@ -263,7 +254,7 @@ static void timeout(int sig) {
   /* Just let report_kids() take its course, it's safer than calling non-reentrant code
      from here. */
 
-  prudent_kill(orig_pid,SIGKILL);
+  if (orig_pid > 1) kill(-orig_pid,SIGKILL);
   
 }
 
@@ -490,9 +481,9 @@ static void handle_kill(int sig) {
   
   shmctl(shmid, IPC_RMID, 0);
   
-  prudent_kill(orig_pid,SIGKILL);
+  if (orig_pid > 1) kill(-orig_pid,SIGKILL);
   for (i=0;i<proc_cnt;i++)
-    prudent_kill(procs[i].pid,SIGKILL);
+    if (procs[i].pid > 0) kill(procs[i].pid,SIGKILL);
 
   exit(1);
 }
